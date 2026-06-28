@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
@@ -31,7 +33,7 @@ export default function AdminDashboardPage() {
 
     const fetchSchools = async () => {
       try {
-        const response = await fetch("http://localhost:8080/api/admin/schools", {
+        const response = await fetch(`${API_URL}/api/admin/schools`, {
           headers: {
             "Authorization": `Bearer ${token}`,
           },
@@ -66,7 +68,7 @@ export default function AdminDashboardPage() {
     }
 
     try {
-      const response = await fetch("http://localhost:8080/api/admin/schools", {
+      const response = await fetch(`${API_URL}/api/admin/schools`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

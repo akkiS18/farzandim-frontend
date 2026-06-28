@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 
@@ -49,7 +51,7 @@ export default function ManageSchoolPage() {
       setError("");
       try {
         // 1. Fetch School details
-        const schoolRes = await fetch(`http://localhost:8080/api/admin/schools/${schoolId}`, {
+        const schoolRes = await fetch(`${API_URL}/api/admin/schools/${schoolId}`, {
           headers: { "Authorization": `Bearer ${token}` },
         });
         if (!schoolRes.ok) throw new Error("Failed to load school details");
@@ -57,7 +59,7 @@ export default function ManageSchoolPage() {
         setSchool(schoolData);
 
         // 2. Fetch Admins list
-        const adminsRes = await fetch(`http://localhost:8080/api/admin/schools/${schoolId}/admins`, {
+        const adminsRes = await fetch(`${API_URL}/api/admin/schools/${schoolId}/admins`, {
           headers: { "Authorization": `Bearer ${token}` },
         });
         if (!adminsRes.ok) throw new Error("Failed to load administrators");
@@ -97,7 +99,7 @@ export default function ManageSchoolPage() {
     };
 
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/schools/${schoolId}/admins`, {
+      const response = await fetch(`${API_URL}/api/admin/schools/${schoolId}/admins`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
