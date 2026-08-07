@@ -41,6 +41,9 @@ export default function AdminLoginPage() {
       }
 
       localStorage.setItem("super_token", data.token);
+      if (data.refresh_token) {
+        localStorage.setItem("super_refresh_token", data.refresh_token);
+      }
       localStorage.setItem("super_user", JSON.stringify(data.user));
       router.push("/admin/dashboard");
     } catch (err: any) {

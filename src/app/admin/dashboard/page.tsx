@@ -51,6 +51,7 @@ export default function AdminDashboardPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("super_token");
+    localStorage.removeItem("super_refresh_token");
     localStorage.removeItem("super_user");
     router.push("/admin/login");
   };
@@ -114,7 +115,7 @@ export default function AdminDashboardPage() {
             )}
             <button
               onClick={handleLogout}
-              className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-2 px-3 rounded-lg transition"
+              className="text-xs text-zinc-400 hover:text-red-400 transition cursor-pointer"
             >
               Sign Out
             </button>
@@ -122,115 +123,94 @@ export default function AdminDashboardPage() {
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <section className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Form Side */}
-          <div className="lg:col-span-1">
-            <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-bold text-zinc-200 mb-2">
-                Register New School (Tenant)
-              </h2>
-              <p className="text-xs text-zinc-400 mb-6">
-                This process dynamically spins up an isolated PostgreSQL database, executes migrations, and configures the connection routing.
-              </p>
+      {/* Content Area */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left Column: Form */}
+        <div className="lg:col-span-1">
+          <div className="bg-[#121215] border border-zinc-800 rounded-2xl p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-zinc-100 mb-1">Provision New School</h2>
+            <p className="text-xs text-zinc-400 mb-6">
+              Create a new school tenant with an isolated PostgreSQL database.
+            </p>
 
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg mb-4">
-                  {error}
-                </div>
-              )}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-xl mb-4">
+                {error}
+              </div>
+            )}
 
-              {success && (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded-lg mb-4">
-                  {success}
-                </div>
-              )}
+            {success && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded-xl mb-4">
+                {success}
+              </div>
+            )}
 
-              <form onSubmit={handleCreateSchool} className="space-y-4">
-                <div>
-                  <label htmlFor="super-admin-school-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
-                    School Name
-                  </label>
-                  <input
-                    id="super-admin-school-name"
-                    type="text"
-                    required
-                    value={schoolName}
-                    onChange={(e) => setSchoolName(e.target.value)}
-                    placeholder="e.g. Cambridge School"
-                    className="w-full bg-[#18181b]/50 border border-zinc-800 focus:border-indigo-500 text-zinc-100 rounded-xl px-4 py-3 text-sm transition outline-none"
-                  />
-                </div>
+            <form onSubmit={handleCreateSchool} className="space-y-4">
+              <div>
+                <label htmlFor="school-name-input" className="block text-xs font-medium text-zinc-300 mb-1">
+                  School Name
+                </label>
+                <input
+                  id="school-name-input"
+                  type="text"
+                  required
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                  placeholder="e.g. 15-Maktab"
+                  className="w-full bg-[#18181b] border border-zinc-700 focus:border-indigo-500 text-zinc-100 rounded-xl px-3.5 py-2.5 text-sm outline-none transition"
+                />
+              </div>
 
-                <button
-                  id="super-admin-create-school-submit"
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium py-3 px-4 rounded-xl transition shadow-lg shadow-indigo-600/25 outline-none cursor-pointer disabled:opacity-50"
-                >
-                  {loading ? "Provisioning Database..." : "Provision School Database"}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* List of Created Schools Side */}
-          <div className="lg:col-span-2">
-            <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-xl h-full flex flex-col">
-              <h2 className="text-lg font-bold text-zinc-200 mb-6">
-                Active Tenant Databases
-              </h2>
-
-              {createdSchools.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-zinc-800 rounded-xl p-8 text-center">
-                  <span className="text-zinc-500 text-3xl mb-2">🏫</span>
-                  <p className="text-sm text-zinc-400">No schools provisioned in this session yet.</p>
-                  <p className="text-xs text-zinc-500 mt-1">Use the form on the left to add a new database.</p>
-                </div>
-              ) : (
-                <div className="space-y-4 overflow-y-auto max-h-[500px] pr-2">
-                  {createdSchools.map((school) => {
-                    // Extract DB name from connection string for presentation
-                    let dbName = "Unknown";
-                    try {
-                      const urlParts = school.db_connection_string.split("/");
-                      dbName = urlParts[urlParts.length - 1].split("?")[0];
-                    } catch (e) {}
-
-                    return (
-                      <div
-                        key={school.id}
-                        className="bg-[#18181b]/40 border border-zinc-800 hover:border-indigo-500/30 rounded-xl p-5 transition flex flex-col md:flex-row md:items-center justify-between gap-4"
-                      >
-                        <div className="space-y-1">
-                          <h3 className="font-semibold text-zinc-100 text-base">{school.name}</h3>
-                          <div className="flex flex-wrap gap-2 text-xs">
-                            <span className="text-zinc-400">ID: {school.id}</span>
-                            <span className="text-zinc-500">•</span>
-                            <span className="text-indigo-400 font-mono">DB: {dbName}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="hidden md:block text-xs bg-indigo-500/10 text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-500/20 font-mono overflow-x-auto max-w-full md:max-w-xs">
-                            {school.db_connection_string}
-                          </div>
-                          <a
-                            href={`/admin/schools/${school.id}`}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 px-3 rounded-lg text-center transition"
-                          >
-                            Manage Admins
-                          </a>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition shadow-lg shadow-indigo-600/20 outline-none cursor-pointer disabled:opacity-50"
+              >
+                {loading ? "Provisioning Database..." : "Provision School"}
+              </button>
+            </form>
           </div>
         </div>
-      </section>
+
+        {/* Right Column: Existing Tenants */}
+        <div className="lg:col-span-2">
+          <div className="bg-[#121215] border border-zinc-800 rounded-2xl p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-zinc-100 mb-1">Registered School DBs</h2>
+            <p className="text-xs text-zinc-400 mb-6">
+              Active multi-tenant isolated databases managed by Central DB.
+            </p>
+
+            {createdSchools.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-zinc-800 rounded-xl">
+                <p className="text-sm text-zinc-500">No schools provisioned yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-zinc-300">
+                  <thead className="text-xs uppercase bg-[#18181b] text-zinc-400 border-b border-zinc-800">
+                    <tr>
+                      <th className="px-4 py-3 rounded-l-lg">School Name</th>
+                      <th className="px-4 py-3">Tenant ID</th>
+                      <th className="px-4 py-3 rounded-r-lg">Database Connection</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60">
+                    {createdSchools.map((school) => (
+                      <tr key={school.id} className="hover:bg-zinc-800/30 transition">
+                        <td className="px-4 py-3.5 font-medium text-zinc-100">{school.name}</td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-indigo-400">{school.id}</td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-zinc-400 truncate max-w-[200px]">
+                          {school.db_connection_string}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
