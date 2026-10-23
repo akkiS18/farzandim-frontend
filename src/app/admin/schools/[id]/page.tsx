@@ -1,8 +1,8 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import api, { clearSuperAuth, getSuperUser } from "@/lib/api";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -19,10 +19,10 @@ interface AdminUser {
 interface School {
   id: string;
   name: string;
-  db_connection_string?: string;
 }
 
 export default function ManageSchoolPage() {
+  const submitting = useRef(false);
   const params = useParams();
   const router = useRouter();
   const schoolId = params.id as string;
@@ -46,61 +46,42 @@ export default function ManageSchoolPage() {
   const [success, setSuccess] = useState("");
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, label: string) => {
+    try { await navigator.clipboard.writeText(text); } catch { setError("Nusxalash bajarilmadi"); return; }
     setCopiedText(label);
     setTimeout(() => setCopiedText(null), 2000);
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("super_token");
-    if (!token) {
-      router.push("/admin/login");
-      return;
-    }
-
-    const loadData = async () => {
-      setFetching(true);
-      setError("");
-      try {
-        // 1. Fetch School details
-        const schoolRes = await fetch(`${API_URL}/api/admin/schools/${schoolId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!schoolRes.ok) throw new Error("Maktab ma'lumotlarini yuklab bo'lmadi");
-        const schoolData = await schoolRes.json();
-        setSchool(schoolData);
-
-        // 2. Fetch Admins list
-        const adminsRes = await fetch(`${API_URL}/api/admin/schools/${schoolId}/admins`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!adminsRes.ok) throw new Error("Administratorlar ro'yxatini yuklab bo'lmadi");
-        const adminsData = await adminsRes.json();
-        setAdmins(Array.isArray(adminsData) ? adminsData : []);
-      } catch (err: any) {
-        setError(err.message || "Ma'lumotlarni yuklashda xatolik yuz berdi.");
-      } finally {
-        setFetching(false);
-      }
-    };
-
-    if (schoolId) {
-      loadData();
-    }
+    if (!getSuperUser()) { clearSuperAuth(); router.replace("/admin/login"); return; }
+    const controller = new AbortController();
+    setFetching(true);
+    setSchool(null);
+    setAdmins([]);
+    setError("");
+    setSuccess("");
+    setIsModalOpen(false);
+    Promise.all([
+      api.get<School>(`/api/admin/schools/${schoolId}`, { signal: controller.signal }),
+      api.get<AdminUser[]>(`/api/admin/schools/${schoolId}/admins`, { signal: controller.signal }),
+    ]).then(([schoolData, adminsData]) => {
+      if (controller.signal.aborted) return;
+      setSchool(schoolData);
+      setAdmins(adminsData || []);
+    }).catch(err => {
+      if (!controller.signal.aborted) setError(err.message || "Ma’lumotlar yuklanmadi");
+    }).finally(() => { if (!controller.signal.aborted) setFetching(false); });
+    return () => controller.abort();
   }, [schoolId, router]);
 
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current || fetching || !school) return;
+    if ([...password].length < 12 || new TextEncoder().encode(password).length > 72) { setError("Parol kamida 12 belgi va ko‘pi bilan 72 bayt bo‘lishi kerak"); return; }
+    submitting.current = true;
     setLoading(true);
     setError("");
     setSuccess("");
-
-    const token = localStorage.getItem("super_token");
-    if (!token) {
-      router.push("/admin/login");
-      return;
-    }
 
     const payload = {
       first_name: firstName.trim(),
@@ -112,21 +93,7 @@ export default function ManageSchoolPage() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/schools/${schoolId}/admins`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Administrator qo'shishda xatolik yuz berdi");
-      }
-
+      const data = await api.post<AdminUser>(`/api/admin/schools/${schoolId}/admins`, payload);
       setSuccess(`Admin ${firstName} ${lastName} muvaffaqiyatli ro'yxatga olindi.`);
       setAdmins((prev) => [data, ...prev]);
 
@@ -141,6 +108,7 @@ export default function ManageSchoolPage() {
     } catch (err: any) {
       setError(err.message || "Administrator yaratishda kutilmagan xatolik yuz berdi.");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
@@ -207,7 +175,8 @@ export default function ManageSchoolPage() {
           </div>
 
           <button
-            onClick={() => setIsModalOpen(true)}
+            disabled={fetching || !school}
+                onClick={() => { setError(""); setIsModalOpen(true); }}
             className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-semibold py-2 px-3.5 rounded-xl transition shadow-lg shadow-indigo-600/20 cursor-pointer"
           >
             <span>+</span>
@@ -242,7 +211,7 @@ export default function ManageSchoolPage() {
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-md font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  PostgreSQL Baza Ulangan
+                  Maktab ma’lumotlari
                 </span>
               </div>
             </div>
@@ -325,7 +294,8 @@ export default function ManageSchoolPage() {
               Ushbu maktab uchun hali birorta administrator belgilanmagan. Maktab faoliyatini boshlash uchun birinchi adminni qo'shing.
             </p>
             <button
-              onClick={() => setIsModalOpen(true)}
+              disabled={fetching || !school}
+                onClick={() => { setError(""); setIsModalOpen(true); }}
               className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition shadow-lg shadow-indigo-600/25 cursor-pointer"
             >
               <span>+</span>
@@ -447,7 +417,7 @@ export default function ManageSchoolPage() {
                 </p>
               </div>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => { if (!loading) setIsModalOpen(false); }}
                 className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 text-sm transition"
               >
                 ✕
@@ -455,6 +425,7 @@ export default function ManageSchoolPage() {
             </div>
 
             <form onSubmit={handleAddAdmin} className="space-y-4 mt-5">
+              {error && <p role="alert" className="text-red-400 text-sm">{error}</p>}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 mb-1">
@@ -531,6 +502,8 @@ export default function ManageSchoolPage() {
                 </label>
                 <input
                   type="password"
+                      autoComplete="new-password"
+                      minLength={12}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -542,7 +515,7 @@ export default function ManageSchoolPage() {
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { if (!loading) setIsModalOpen(false); }}
                   className="text-xs text-zinc-400 hover:text-white px-4 py-2.5 rounded-xl hover:bg-zinc-800 transition cursor-pointer"
                 >
                   Bekor qilish
@@ -562,3 +535,4 @@ export default function ManageSchoolPage() {
     </main>
   );
 }
+

@@ -1,107 +1,81 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import api, { clearSuperAuth, getSuperUser, type SuperUser } from "@/lib/api";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import SuperAdminPasswordForm from "@/components/SuperAdminPasswordForm";
 
 interface School {
   id: string;
   name: string;
-  db_connection_string: string;
 }
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const submitting = useRef(false);
   const [schoolName, setSchoolName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [adminUser, setAdminUser] = useState<any>(null);
+  const [adminUser, setAdminUser] = useState<SuperUser | null>(null);
   const [createdSchools, setCreatedSchools] = useState<School[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const [listError, setListError] = useState("");
+  const [listLoading, setListLoading] = useState(true);
+  const [logoutLoading, setLogoutLoading] = useState(false);
   useEffect(() => {
-    const token = localStorage.getItem("super_token");
-    const userStr = localStorage.getItem("super_user");
-    if (!token) {
-      router.push("/admin/login");
-      return;
-    }
-    if (userStr) {
-      setAdminUser(JSON.parse(userStr));
-    }
-
-    const fetchSchools = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/admin/schools`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setCreatedSchools(data || []);
-        }
-      } catch (err) {
-        console.error("Failed to load schools list:", err);
-      }
-    };
-    fetchSchools();
+    const user = getSuperUser();
+    if (!user) { clearSuperAuth(); router.replace("/admin/login"); return; }
+    setAdminUser(user);
+    const controller = new AbortController();
+    api.get<School[]>("/api/admin/schools", { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setCreatedSchools(data || []); })
+      .catch(err => { if (!controller.signal.aborted) setListError(err.message || "Maktablar yuklanmadi"); })
+      .finally(() => { if (!controller.signal.aborted) setListLoading(false); });
+    return () => controller.abort();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("super_token");
-    localStorage.removeItem("super_refresh_token");
-    localStorage.removeItem("super_user");
-    router.push("/admin/login");
+  const handleLogout = async () => {
+    if (logoutLoading) return;
+    setLogoutLoading(true);
+    try {
+      await api.post("/api/admin/super/logout");
+      clearSuperAuth();
+      router.replace("/admin/login");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Chiqish bajarilmadi. Qayta urinib ko‘ring");
+    } finally { setLogoutLoading(false); }
   };
 
-  const handleCopyId = (id: string, e: React.MouseEvent) => {
+  const handleCopyId = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(id);
+    try { await navigator.clipboard.writeText(id); } catch { setError("ID nusxalanmadi"); return; }
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
   const handleCreateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!schoolName.trim()) return;
+    if (!schoolName.trim() || submitting.current || listLoading || listError) return;
+    submitting.current = true;
 
     setLoading(true);
     setError("");
     setSuccess("");
 
-    const token = localStorage.getItem("super_token");
-    if (!token) {
-      router.push("/admin/login");
-      return;
-    }
-
     try {
-      const response = await fetch(`${API_URL}/api/admin/schools`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name: schoolName.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create school");
-      }
-
+      const data = await api.post<{ school: School }>("/api/admin/schools", { name: schoolName.trim() });
       setSuccess(`Muvaffaqiyatli yaratildi: ${schoolName}`);
       setCreatedSchools((prev) => [data.school, ...prev]);
       setSchoolName("");
     } catch (err: any) {
       setError(err.message || "Maktab ma'lumotlar bazasini yaratishda xatolik yuz berdi.");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
@@ -144,9 +118,10 @@ export default function AdminDashboardPage() {
             )}
             <button
               onClick={handleLogout}
+              disabled={logoutLoading}
               className="text-xs font-medium text-zinc-400 hover:text-red-400 bg-zinc-900 hover:bg-red-500/10 border border-zinc-800 hover:border-red-500/20 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
             >
-              Chiqish
+              {logoutLoading ? "Chiqilmoqda…" : "Barcha qurilmalardan chiqish"}
             </button>
           </div>
         </div>
@@ -174,7 +149,7 @@ export default function AdminDashboardPage() {
               </span>
               <div className="mt-2 flex items-center space-x-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                <span className="text-sm font-semibold text-emerald-400">Multi-tenant Baza Faol</span>
+                <span className="text-sm font-semibold text-emerald-400">{listLoading ? "Yuklanmoqda" : "Maktablar boshqaruvi"}</span>
               </div>
             </div>
 
@@ -224,6 +199,7 @@ export default function AdminDashboardPage() {
                   id="school-name-input"
                   type="text"
                   required
+                  maxLength={255}
                   value={schoolName}
                   onChange={(e) => setSchoolName(e.target.value)}
                   placeholder="Masalan: 15-IDUM yoki Smart School"
@@ -233,7 +209,7 @@ export default function AdminDashboardPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || listLoading || !!listError}
                 className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium py-3 px-4 rounded-xl text-sm transition shadow-lg shadow-indigo-600/20 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
                 {loading ? (
@@ -248,6 +224,7 @@ export default function AdminDashboardPage() {
                 )}
               </button>
             </form>
+            <SuperAdminPasswordForm />
           </div>
         </div>
 
@@ -279,7 +256,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {createdSchools.length === 0 ? (
+            {listLoading ? <p className="p-6">Maktablar yuklanmoqda…</p> : listError ? <p role="alert" className="p-6 text-red-400">{listError}. Sahifani qayta yuklang.</p> : createdSchools.length === 0 ? (
               <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
                 <div className="w-12 h-12 rounded-full bg-zinc-800/60 text-zinc-400 flex items-center justify-center mx-auto mb-3 text-xl">
                   🏫
@@ -340,7 +317,7 @@ export default function AdminDashboardPage() {
                         <td className="px-4 py-4">
                           <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full font-medium">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                            Faol
+                            Ro‘yxatda
                           </span>
                         </td>
 
@@ -365,3 +342,4 @@ export default function AdminDashboardPage() {
     </main>
   );
 }
+

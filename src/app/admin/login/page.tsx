@@ -1,54 +1,41 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import api, { saveSuperAuth, getSuperUser } from "@/lib/api";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [phone, setPhone] = useState("+998901112233");
-  const [password, setPassword] = useState("password123");
+  const submitting = useRef(false);
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     // Redirect if already logged in
-    const token = localStorage.getItem("super_token");
-    if (token) {
+    const user = getSuperUser();
+    if (user) {
       router.push("/admin/dashboard");
     }
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     setError("");
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/super/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ phone, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Login failed");
-      }
-
-      localStorage.setItem("super_token", data.token);
-      if (data.refresh_token) {
-        localStorage.setItem("super_refresh_token", data.refresh_token);
-      }
-      localStorage.setItem("super_user", JSON.stringify(data.user));
+      const data = await api.post<Parameters<typeof saveSuperAuth>[0]>("/api/admin/super/login", { phone, password });
+      saveSuperAuth(data);
       router.push("/admin/dashboard");
     } catch (err: any) {
       setError(err.message || "Something went wrong. Please check your credentials.");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
@@ -78,7 +65,8 @@ export default function AdminLoginPage() {
             </label>
             <input
               id="super-admin-login-phone"
-              type="text"
+              autoComplete="username"
+              type="tel"
               required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -94,6 +82,7 @@ export default function AdminLoginPage() {
             <input
               id="super-admin-login-password"
               type="password"
+              autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -115,3 +104,4 @@ export default function AdminLoginPage() {
     </main>
   );
 }
+
